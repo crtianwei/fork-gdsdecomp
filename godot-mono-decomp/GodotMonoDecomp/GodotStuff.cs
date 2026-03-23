@@ -1065,10 +1065,6 @@ public static class GodotStuff
 				{
 					return true;
 				}
-				if (RemoveAutoAccessor.IsCompilerGeneratedAccessorMethod(method))
-				{
-					return true;
-				}
 
 				// auto-generated getter methods for properties of parent classes
 
