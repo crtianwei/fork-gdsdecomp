@@ -87,6 +87,7 @@ HashSet<StringName> get_scene_groups(const String &p_path) {
 			return packed_scene->get_state()->get_all_groups();
 		}
 	}
+	return HashSet<StringName>();
 }
 
 // Error remove_remap(const String &src, const String &dst, const String &output_dir);
