@@ -46,10 +46,22 @@ class GDREFindReplaceBar : public PanelContainer {
 
 	bool replace_all_mode = false;
 	bool preserve_cursor = false;
+	bool resize_handle_dragging = false;
+	bool minimum_resize_width_pending = false;
 
 	bool replace_enabled = true;
 	bool should_show_panel_background = true;
+	bool resizable = true;
 
+	float resize_drag_origin_x = 0.0f;
+	int resize_drag_start_width = 0;
+	int minimum_resize_width = -1;
+	int desired_resize_width = -1;
+	int resize_edge_size = 0;
+	Control *resize_parent_control = nullptr;
+
+	virtual void gui_input(const Ref<InputEvent> &p_event) override;
+	virtual CursorShape get_cursor_shape(const Point2 &p_pos) const override;
 	virtual void input(const Ref<InputEvent> &p_event) override;
 
 	void _get_search_from(int &r_line, int &r_col, SearchMode p_search_mode);
@@ -74,6 +86,11 @@ class GDREFindReplaceBar : public PanelContainer {
 	String get_action_description(const String &p_action_name) const;
 
 	void _set_matches_custom_minimum_size();
+	void _cache_minimum_resize_width();
+	void _set_bar_width(int p_width, bool p_update_desired_width = true);
+	bool _is_on_resize_edge(const Point2 &p_position) const;
+	void _update_parent_resize_connection();
+	void _on_parent_control_resized();
 
 protected:
 	void _notification(int p_what);
@@ -117,6 +134,9 @@ public:
 
 	void set_show_panel_background(bool p_show);
 	bool is_showing_panel_background() const;
+
+	void set_resizable(bool p_resizable);
+	bool is_resizable() const;
 
 	void refresh_search();
 

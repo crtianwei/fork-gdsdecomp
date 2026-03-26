@@ -25,6 +25,7 @@ void GDREFindReplaceBar::_notification(int p_what) {
 			find_next->set_button_icon(GDREGuiIcons::get_icon(SNAME("MoveDown"), get_theme_default_base_scale()));
 			hide_button->set_button_icon(GDREGuiIcons::get_icon(SNAME("Close"), get_theme_default_base_scale()));
 			_update_toggle_replace_button(replace_text->is_visible_in_tree());
+			_update_parent_resize_connection();
 		} break;
 
 		case NOTIFICATION_TRANSLATION_CHANGED: {
@@ -38,7 +39,25 @@ void GDREFindReplaceBar::_notification(int p_what) {
 		} break;
 
 		case NOTIFICATION_VISIBILITY_CHANGED: {
+			if (!is_visible_in_tree()) {
+				resize_handle_dragging = false;
+			} else {
+				_cache_minimum_resize_width();
+			}
 			set_process_input(is_visible_in_tree());
+		} break;
+
+		case NOTIFICATION_ENTER_TREE:
+		case NOTIFICATION_PARENTED: {
+			_update_parent_resize_connection();
+		} break;
+
+		case NOTIFICATION_EXIT_TREE:
+		case NOTIFICATION_UNPARENTED: {
+			if (resize_parent_control && resize_parent_control->is_connected(SceneStringName(resized), callable_mp(this, &GDREFindReplaceBar::_on_parent_control_resized))) {
+				resize_parent_control->disconnect(SceneStringName(resized), callable_mp(this, &GDREFindReplaceBar::_on_parent_control_resized));
+			}
+			resize_parent_control = nullptr;
 		} break;
 
 		case NOTIFICATION_THEME_CHANGED: {
@@ -67,6 +86,132 @@ void GDREFindReplaceBar::input(const Ref<InputEvent> &p_event) {
 			accept_event();
 		}
 	}
+}
+
+void GDREFindReplaceBar::gui_input(const Ref<InputEvent> &p_event) {
+	if (p_event.is_null()) {
+		return;
+	}
+
+	Ref<InputEventMouseButton> mb = p_event;
+	if (mb.is_valid() && mb->get_button_index() == MouseButton::LEFT) {
+		if (mb->is_pressed()) {
+			if (_is_on_resize_edge(mb->get_position())) {
+				_cache_minimum_resize_width();
+				resize_handle_dragging = true;
+				resize_drag_origin_x = mb->get_global_position().x;
+				resize_drag_start_width = (int)get_size().x;
+				accept_event();
+			}
+		} else if (resize_handle_dragging) {
+			resize_handle_dragging = false;
+			accept_event();
+		}
+		return;
+	}
+
+	Ref<InputEventMouseMotion> mm = p_event;
+	if (mm.is_valid() && resize_handle_dragging) {
+		const int delta = (int)(mm->get_global_position().x - resize_drag_origin_x);
+		int target_width = resize_drag_start_width - delta;
+		if (is_layout_rtl()) {
+			target_width = resize_drag_start_width + delta;
+		}
+		_set_bar_width(target_width);
+		accept_event();
+	}
+}
+
+Control::CursorShape GDREFindReplaceBar::get_cursor_shape(const Point2 &p_pos) const {
+	if (resize_handle_dragging || _is_on_resize_edge(p_pos)) {
+		return CURSOR_HSPLIT;
+	}
+	return PanelContainer::get_cursor_shape(p_pos);
+}
+
+bool GDREFindReplaceBar::_is_on_resize_edge(const Point2 &p_position) const {
+	if (!resizable) {
+		return false;
+	}
+
+	const float edge_size = (float)MAX(6, resize_edge_size);
+	if (p_position.y < 0.0f || p_position.y > get_size().y) {
+		return false;
+	}
+
+	if (is_layout_rtl()) {
+		return p_position.x >= get_size().x - edge_size;
+	}
+
+	return p_position.x <= edge_size;
+}
+
+void GDREFindReplaceBar::_update_parent_resize_connection() {
+	Control *parent_control = get_parent_control();
+	if (resize_parent_control == parent_control) {
+		return;
+	}
+
+	if (resize_parent_control && resize_parent_control->is_connected(SceneStringName(resized), callable_mp(this, &GDREFindReplaceBar::_on_parent_control_resized))) {
+		resize_parent_control->disconnect(SceneStringName(resized), callable_mp(this, &GDREFindReplaceBar::_on_parent_control_resized));
+	}
+
+	resize_parent_control = parent_control;
+	if (resize_parent_control && !resize_parent_control->is_connected(SceneStringName(resized), callable_mp(this, &GDREFindReplaceBar::_on_parent_control_resized))) {
+		resize_parent_control->connect(SceneStringName(resized), callable_mp(this, &GDREFindReplaceBar::_on_parent_control_resized));
+	}
+}
+
+void GDREFindReplaceBar::_on_parent_control_resized() {
+	if (desired_resize_width < 0) {
+		desired_resize_width = (int)get_size().x;
+	}
+	_set_bar_width(desired_resize_width, false);
+}
+
+void GDREFindReplaceBar::_cache_minimum_resize_width() {
+	minimum_resize_width_pending = false;
+	if (minimum_resize_width >= 0 || !is_visible_in_tree()) {
+		return;
+	}
+
+	const int current_width = (int)get_size().x;
+	if (current_width <= 0) {
+		if (!minimum_resize_width_pending) {
+			minimum_resize_width_pending = true;
+			callable_mp(this, &GDREFindReplaceBar::_cache_minimum_resize_width).call_deferred();
+		}
+		return;
+	}
+
+	minimum_resize_width = current_width;
+	if (desired_resize_width < 0) {
+		desired_resize_width = current_width;
+	}
+}
+
+void GDREFindReplaceBar::_set_bar_width(int p_width, bool p_update_desired_width) {
+	int target_width = p_width;
+	if (minimum_resize_width >= 0 && target_width < minimum_resize_width) {
+		target_width = minimum_resize_width;
+	}
+	if (p_update_desired_width) {
+		desired_resize_width = target_width;
+	}
+	const Control *parent_control = get_parent_control();
+	if (parent_control) {
+		const int parent_width = (int)parent_control->get_size().x;
+		const int right_edge_in_parent = (int)(get_position().x + get_size().x);
+		const int max_width_in_parent = MIN(parent_width, right_edge_in_parent);
+		if (max_width_in_parent > 0 && target_width > max_width_in_parent) {
+			target_width = max_width_in_parent;
+		}
+	}
+	if (target_width <= 0 || target_width == (int)get_size().x) {
+		return;
+	}
+
+	set_offset(SIDE_LEFT, get_offset(SIDE_RIGHT) - target_width);
 }
 
 void GDREFindReplaceBar::_update_flags(bool p_direction_backwards) {
@@ -473,6 +618,7 @@ void GDREFindReplaceBar::_update_toggle_replace_button(bool p_replace_visible) {
 
 void GDREFindReplaceBar::_show_search(bool p_with_replace, bool p_show_only) {
 	show();
+	_cache_minimum_resize_width();
 	if (p_show_only) {
 		return;
 	}
@@ -742,6 +888,25 @@ bool GDREFindReplaceBar::is_showing_panel_background() const {
 	return should_show_panel_background;
 }
 
+void GDREFindReplaceBar::set_resizable(bool p_resizable) {
+	if (resizable == p_resizable) {
+		return;
+	}
+
+	resizable = p_resizable;
+	if (!resizable) {
+		resize_handle_dragging = false;
+	}
+
+	if (is_inside_tree()) {
+		get_viewport()->update_mouse_cursor_state();
+	}
+}
+
+bool GDREFindReplaceBar::is_resizable() const {
+	return resizable;
+}
+
 void GDREFindReplaceBar::_update_panel_background() {
 	if (should_show_panel_background) {
 		remove_theme_style_override(SceneStringName(panel));
@@ -785,11 +950,14 @@ void GDREFindReplaceBar::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("set_show_panel_background", "p_show"), &GDREFindReplaceBar::set_show_panel_background);
 	ClassDB::bind_method(D_METHOD("is_showing_panel_background"), &GDREFindReplaceBar::is_showing_panel_background);
+	ClassDB::bind_method(D_METHOD("set_resizable", "p_resizable"), &GDREFindReplaceBar::set_resizable);
+	ClassDB::bind_method(D_METHOD("is_resizable"), &GDREFindReplaceBar::is_resizable);
 
 	ClassDB::bind_method(D_METHOD("refresh_search"), &GDREFindReplaceBar::refresh_search);
 
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "show_panel_background"), "set_show_panel_background", "is_showing_panel_background");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "replace_enabled"), "set_replace_enabled", "is_replace_enabled");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "resizable"), "set_resizable", "is_resizable");
 }
 
 void GDREFindReplaceBar::_set_matches_custom_minimum_size() {
@@ -808,6 +976,7 @@ GDREFindReplaceBar::GDREFindReplaceBar() {
 	main->set_v_size_flags(SIZE_EXPAND_FILL);
 	// main->set_anchors_preset(Control::PRESET_FULL_RECT);
 	add_child(main);
+	resize_edge_size = MAX(6, (int)(6 * get_theme_default_base_scale()));
 
 	toggle_replace_button = memnew(Button);
 	main->add_child(toggle_replace_button);
@@ -843,6 +1012,7 @@ GDREFindReplaceBar::GDREFindReplaceBar() {
 	search_text = memnew(LineEdit);
 	search_text->set_keep_editing_on_text_submit(true);
 	vbc_lineedit->add_child(search_text);
+	search_text->set_h_size_flags(SIZE_EXPAND_FILL);
 	search_text->set_placeholder(TTRC("Find"));
 	search_text->set_tooltip_text(TTRC("Find"));
 	search_text->set_accessibility_name(TTRC("Find"));
@@ -897,13 +1067,22 @@ GDREFindReplaceBar::GDREFindReplaceBar() {
 	whole_words->connect(SceneStringName(toggled), callable_mp(this, &GDREFindReplaceBar::_search_options_changed));
 
 	// Replace toolbar.
+	HBoxContainer *hbc_replace_text = memnew(HBoxContainer);
+	hbc_replace_text->set_h_size_flags(SIZE_EXPAND_FILL);
+	vbc_lineedit->add_child(hbc_replace_text);
+
 	replace_text = memnew(LineEdit);
-	vbc_lineedit->add_child(replace_text);
+	hbc_replace_text->add_child(replace_text);
+	replace_text->set_h_size_flags(SIZE_SHRINK_BEGIN);
 	replace_text->set_placeholder(TTRC("Replace"));
 	replace_text->set_tooltip_text(TTRC("Replace"));
 	replace_text->set_accessibility_name(TTRC("Replace"));
 	replace_text->set_custom_minimum_size(Size2(100 * GDRESettings::get_singleton()->get_auto_display_scale(), 0));
 	replace_text->connect(SceneStringName(text_submitted), callable_mp(this, &GDREFindReplaceBar::_replace_text_submitted));
+
+	Control *replace_text_spacer = memnew(Control);
+	replace_text_spacer->set_h_size_flags(SIZE_EXPAND_FILL);
+	hbc_replace_text->add_child(replace_text_spacer);
 
 	replace = memnew(Button);
 	hbc_button_replace->add_child(replace);
