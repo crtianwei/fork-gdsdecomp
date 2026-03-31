@@ -16,12 +16,10 @@
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-using ICSharpCode.Decompiler.CSharp;
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.CSharp.Transforms;
-using ICSharpCode.Decompiler.TypeSystem;
 
-namespace GodotMonoDecomp;
+namespace GodotMonoDecomp.Transforms;
 
 /// <summary>
 /// A hack to remove compiler-generated exception throws caused by switch expressions being compiled as imperative code.

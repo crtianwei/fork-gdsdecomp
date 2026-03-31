@@ -28,6 +28,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using GodotMonoDecomp.Transforms;
 using ICSharpCode.Decompiler;
 using ICSharpCode.Decompiler.CSharp;
 using ICSharpCode.Decompiler.CSharp.OutputVisitor;
@@ -306,7 +307,7 @@ namespace GodotMonoDecomp
 			decompiler.AstTransforms.Add(new EscapeInvalidIdentifiers());
 			decompiler.AstTransforms.Add(new RemoveCLSCompliantAttribute());
 			decompiler.AstTransforms.Add(new RemoveGodotScriptPathAttribute());
-			decompiler.AstTransforms.Add(new GodotMonoDecomp.RemoveEmbeddedAttributes());
+			decompiler.AstTransforms.Add(new GodotMonoDecomp.Transforms.RemoveEmbeddedAttributes());
 			decompiler.AstTransforms.Add(new RestoreGeneratedRegexMethods());
 			decompiler.AstTransforms.Add(new RemoveGeneratedExceptionThrows());
 			if (Settings.EnableCollectionInitializerLifting)

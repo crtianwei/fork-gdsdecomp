@@ -1,7 +1,7 @@
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.CSharp.Transforms;
 
-namespace GodotMonoDecomp;
+namespace GodotMonoDecomp.Transforms;
 
 /// <summary>
 /// Lifts a narrow set of constructor prelude initializers back to declaration initializers.

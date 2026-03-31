@@ -3,7 +3,7 @@ using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.CSharp.Transforms;
 using ICSharpCode.Decompiler.TypeSystem;
 
-namespace GodotMonoDecomp;
+namespace GodotMonoDecomp.Transforms;
 
 /// <summary>
 /// Intended to fix switch expressions that do not have enough context to determine the best type as a result of a parent member reference expression.

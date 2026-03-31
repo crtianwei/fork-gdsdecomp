@@ -1,10 +1,8 @@
-using ICSharpCode.Decompiler.CSharp;
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.CSharp.Transforms;
 using ICSharpCode.Decompiler.Semantics;
-using ICSharpCode.Decompiler.TypeSystem;
 
-namespace GodotMonoDecomp;
+namespace GodotMonoDecomp.Transforms;
 
 
 /// <summary>

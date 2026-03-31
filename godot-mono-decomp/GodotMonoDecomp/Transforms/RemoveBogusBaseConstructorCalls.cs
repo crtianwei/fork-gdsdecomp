@@ -1,7 +1,7 @@
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.CSharp.Transforms;
 
-namespace GodotMonoDecomp;
+namespace GodotMonoDecomp.Transforms;
 
 /// <summary>
 /// Removes erroneous base._002Ector() calls that sometimes appear at the end of
