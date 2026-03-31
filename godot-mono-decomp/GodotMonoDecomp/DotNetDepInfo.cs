@@ -31,6 +31,9 @@ public class DotNetCoreDepInfo
 	public HashMatchesNugetOrg HashMatchesNugetOrgStatus { get; private set; } = HashMatchesNugetOrg.Unknown;
 	public AssemblyNameReference AssemblyRef => AssemblyNameReference.Parse($"{Name}, Version={GetCorrectVersion(Version)}, Culture=neutral, PublicKeyToken=null");
 
+	public bool IsAvailableOnNuget => Serviceable && HashMatchesNugetOrgStatus != HashMatchesNugetOrg.NoMatch;
+
+	public bool IsRuntimePack => Type == "runtimepack";
 
 	static string GetCorrectVersion(string ver)
 	{
@@ -185,14 +188,14 @@ public class DotNetCoreDepInfo
 
 	public bool HasDep(string name, string? type, bool serviceableAndNuGetOnly = false)
 	{
-		if (runtimeComponents.Contains(name) && !((!string.IsNullOrEmpty(type) && Type != type) || (serviceableAndNuGetOnly && (!Serviceable || HashMatchesNugetOrgStatus == HashMatchesNugetOrg.NoMatch))))
+		if (runtimeComponents.Contains(name) && !((!string.IsNullOrEmpty(type) && Type != type) || (serviceableAndNuGetOnly && !IsAvailableOnNuget)))
 		{
 			return true;
 		}
 		for (int i = 0; i < deps.Length; i++)
 		{
 			if ((!string.IsNullOrEmpty(type) && deps[i].Type != type) ||
-				(serviceableAndNuGetOnly && (!deps[i].Serviceable || deps[i].HashMatchesNugetOrgStatus == HashMatchesNugetOrg.NoMatch)))
+				(serviceableAndNuGetOnly && !deps[i].IsAvailableOnNuget))
 			{
 				// skip non-package dependencies if parent is a package
 				continue;

@@ -623,12 +623,16 @@ namespace GodotMonoDecomp
 
 			HashSet<string> seenRefs = new HashSet<string>();
 
+			var runtimepackComponents = deps?.deps.Where(d => d.IsRuntimePack).SelectMany(d => d.runtimeComponents).ToHashSet() ?? [];
+			var nonruntimepackComponents = deps?.deps.Where(d => !d.IsRuntimePack).SelectMany(d => d.runtimeComponents).ToHashSet() ?? [];
+			runtimepackComponents = [.. runtimepackComponents.Where(c => !nonruntimepackComponents.Contains(c))];
+
 
 			foreach (var reference in module.AssemblyReferences.Where(r => !ImplicitReferences.Contains(r.Name)))
 			{
-				if (isNetCoreApp &&
+				if (isNetCoreApp && (runtimepackComponents.Contains(reference.Name) || (
 				    project.AssemblyReferenceClassifier.IsSharedAssembly(reference, out string? runtimePack) &&
-				    targetPacks.Contains(runtimePack))
+				    targetPacks.Contains(runtimePack))))
 				{
 					continue;
 				}
