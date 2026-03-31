@@ -14,5 +14,6 @@
     <Compile Include="../original/TestNestedCollectionExpressionInitializers.cs" Link="TestNestedCollectionExpressionInitializers.cs" />
     <Compile Include="../original/TestCtorBoundaryCoverage.cs" Link="TestCtorBoundaryCoverage.cs" />
     <Compile Include="../original/TestInterleavedStaticCollectionInit.cs" Link="TestInterleavedStaticCollectionInit.cs" />
+    <Compile Include="../original/TestStatementAnnotationLiftCoverage.cs" Link="TestStatementAnnotationLiftCoverage.cs" />
   </ItemGroup>
 </Project>

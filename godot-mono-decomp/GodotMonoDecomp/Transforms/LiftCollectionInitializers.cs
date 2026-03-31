@@ -1,3 +1,4 @@
+using ICSharpCode.Decompiler.CSharp;
 using ICSharpCode.Decompiler.CSharp.Syntax;
 using ICSharpCode.Decompiler.CSharp.Transforms;
 
@@ -344,18 +345,50 @@ public class LiftCollectionInitializers : DepthFirstAstVisitor, IAstTransform
 				{
 					return false;
 				}
-				variable.Initializer = initializer.Clone();
+				variable.Initializer = CopyInstructionAnnotationsFromSource(initializer.Clone(), initializer);
 				return true;
 			case PropertyDeclaration property:
 				if (!property.IsAutomaticProperty)
 				{
 					return false;
 				}
-				property.Initializer = initializer.Clone();
+				property.Initializer = CopyInstructionAnnotationsFromSource(initializer.Clone(), initializer);
 				return true;
 			default:
 				return false;
 		}
+	}
+
+	private static T CopyInstructionAnnotationsFromSource<T>(T target, AstNode source)
+		where T : AstNode
+	{
+		target.CopyInstructionsFrom(source);
+		return target;
+	}
+
+	private static T CopyInstructionAnnotationsFromSources<T>(
+		T target,
+		IEnumerable<Statement>? statementSources = null,
+		IEnumerable<Expression>? expressionSources = null)
+		where T : AstNode
+	{
+		if (statementSources != null)
+		{
+			foreach (var statement in statementSources)
+			{
+				target.CopyInstructionsFrom(statement);
+			}
+		}
+
+		if (expressionSources != null)
+		{
+			foreach (var expression in expressionSources)
+			{
+				target.CopyInstructionsFrom(expression);
+			}
+		}
+
+		return target;
 	}
 
 	private static bool IsStaticMember(EntityDeclaration member)
@@ -463,6 +496,10 @@ public class LiftCollectionInitializers : DepthFirstAstVisitor, IAstTransform
 			ifElse.Condition.Clone(),
 			trueInitializer.Clone(),
 			falseInitializer.Clone());
+		CopyInstructionAnnotationsFromSources(
+			conditionalInitializer,
+			new List<Statement> { statements[startIndex], statements[startIndex + 1], statements[startIndex + 2] },
+			new[] { ifElse.Condition, trueInitializer, falseInitializer });
 		match = new ConditionalTempAssignmentMatch(
 			memberName,
 			conditionalInitializer,
@@ -532,7 +569,10 @@ public class LiftCollectionInitializers : DepthFirstAstVisitor, IAstTransform
 				continue;
 			}
 
-			identifier.ReplaceWith(replacement.Clone());
+			var replacementClone = CopyInstructionAnnotationsFromSources(
+				replacement.Clone(),
+				expressionSources: new[] { identifier, replacement });
+			identifier.ReplaceWith(replacementClone);
 			changed = true;
 		}
 
@@ -552,14 +592,19 @@ public class LiftCollectionInitializers : DepthFirstAstVisitor, IAstTransform
 		while (expression is ObjectCreateExpression rootCreate
 			&& TryUnwrapReadOnlyListOfListCollection(rootCreate, out var rootReplacement))
 		{
-			expression = rootReplacement.Clone();
+			expression = CopyInstructionAnnotationsFromSources(
+				rootReplacement.Clone(),
+				expressionSources: new[] { rootCreate, rootReplacement });
 		}
 
 		foreach (var objectCreate in expression.Descendants.OfType<ObjectCreateExpression>().ToArray())
 		{
 			if (TryUnwrapReadOnlyListOfListCollection(objectCreate, out var replacement))
 			{
-				objectCreate.ReplaceWith(replacement.Clone());
+				var replacementClone = CopyInstructionAnnotationsFromSources(
+					replacement.Clone(),
+					expressionSources: new[] { objectCreate, replacement });
+				objectCreate.ReplaceWith(replacementClone);
 			}
 		}
 
@@ -832,10 +877,15 @@ public class LiftCollectionInitializers : DepthFirstAstVisitor, IAstTransform
 			return false;
 		}
 
+		var arrayInitializer = CopyInstructionAnnotationsFromSources(
+			new ArrayInitializerExpression(values),
+			matchedStatements,
+			values);
 		var collectionInitializer = new ObjectCreateExpression(listDecl.Type.Clone())
 		{
-			Initializer = new ArrayInitializerExpression(values)
+			Initializer = arrayInitializer
 		};
+		CopyInstructionAnnotationsFromSources(collectionInitializer, matchedStatements, values);
 		match = new ListPreludeMatch(
 			listVarName,
 			targetMemberName,
@@ -913,7 +963,7 @@ public class LiftCollectionInitializers : DepthFirstAstVisitor, IAstTransform
 			return false;
 		}
 
-		if (!TryBuildCollectionFromSpreadSegments(listDecl.Type, segments, out var collectionInitializer))
+		if (!TryBuildCollectionFromSpreadSegments(listDecl.Type, segments, matchedStatements, out var collectionInitializer))
 		{
 			return false;
 		}
@@ -995,7 +1045,7 @@ public class LiftCollectionInitializers : DepthFirstAstVisitor, IAstTransform
 			return false;
 		}
 
-		if (!TryBuildCollectionFromSpreadSegments(setDecl.Type, segments, out var collectionInitializer))
+		if (!TryBuildCollectionFromSpreadSegments(setDecl.Type, segments, matchedStatements, out var collectionInitializer))
 		{
 			return false;
 		}
@@ -1071,7 +1121,7 @@ public class LiftCollectionInitializers : DepthFirstAstVisitor, IAstTransform
 			return false;
 		}
 
-		if (!TryBuildCollectionFromSpreadSegments(listDecl.Type, segments, out var listBuilderInitializer))
+		if (!TryBuildCollectionFromSpreadSegments(listDecl.Type, segments, matchedStatements, out var listBuilderInitializer))
 		{
 			return false;
 		}
@@ -1163,6 +1213,7 @@ public class LiftCollectionInitializers : DepthFirstAstVisitor, IAstTransform
 	private static bool TryBuildCollectionFromSpreadSegments(
 		AstType collectionType,
 		IReadOnlyList<SpreadSegment> segments,
+		IReadOnlyList<Statement> matchedStatements,
 		out Expression initializer)
 	{
 		initializer = Expression.Null;
@@ -1184,7 +1235,9 @@ public class LiftCollectionInitializers : DepthFirstAstVisitor, IAstTransform
 
 		var collectionExpression = new ArrayInitializerExpression(elements);
 		collectionExpression.AddAnnotation(CollectionExpressionArrayAnnotation.Instance);
+		CopyInstructionAnnotationsFromSources(collectionExpression, matchedStatements, segments.Select(segment => segment.Expression));
 		initializer = new ObjectCreateExpression(collectionType.Clone(), collectionExpression);
+		CopyInstructionAnnotationsFromSources(initializer, matchedStatements, segments.Select(segment => segment.Expression));
 		return true;
 	}
 
@@ -1434,10 +1487,15 @@ public class LiftCollectionInitializers : DepthFirstAstVisitor, IAstTransform
 			if (TryMatchTerminalObjectMemberAssignment(statement, listVarName, objectVariableName, out memberName))
 			{
 				matchedStatements.Add(statement);
+				var arrayInitializer = CopyInstructionAnnotationsFromSources(
+					new ArrayInitializerExpression(values),
+					matchedStatements,
+					values);
 				initializerValue = new ObjectCreateExpression(listDecl.Type.Clone())
 				{
-					Initializer = new ArrayInitializerExpression(values)
+					Initializer = arrayInitializer
 				};
+				CopyInstructionAnnotationsFromSources(initializerValue, matchedStatements, values);
 				nextIndex = i + 1;
 				return true;
 			}
@@ -1549,7 +1607,9 @@ public class LiftCollectionInitializers : DepthFirstAstVisitor, IAstTransform
 	private static void AddObjectMemberInitializer(ObjectCreateExpression objectValue, string memberName, Expression memberValue)
 	{
 		objectValue.Initializer ??= new ArrayInitializerExpression();
-		objectValue.Initializer.Elements.Add(new NamedExpression(memberName, memberValue.Clone()));
+		var namedInitializer = new NamedExpression(memberName, memberValue.Clone());
+		CopyInstructionAnnotationsFromSource(namedInitializer, memberValue);
+		objectValue.Initializer.Elements.Add(namedInitializer);
 	}
 
 	private static bool IsAllowedPreludeNoise(Statement statement)
@@ -1808,14 +1868,18 @@ public class LiftCollectionInitializers : DepthFirstAstVisitor, IAstTransform
 			return false;
 		}
 
-		initializer = new ObjectCreateExpression(listDecl.Type.Clone())
-		{
-			Initializer = new ArrayInitializerExpression(values)
-		};
 		for (int i = startIndex; i < boundaryIndex; i++)
 		{
 			matchedStatements.Add(statements[i]);
 		}
+		initializer = new ObjectCreateExpression(listDecl.Type.Clone())
+		{
+			Initializer = CopyInstructionAnnotationsFromSources(
+				new ArrayInitializerExpression(values),
+				matchedStatements,
+				values)
+		};
+		CopyInstructionAnnotationsFromSources(initializer, matchedStatements, values);
 		return true;
 	}
 

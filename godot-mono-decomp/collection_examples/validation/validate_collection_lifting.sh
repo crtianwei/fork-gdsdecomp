@@ -59,6 +59,7 @@ if $UPDATE_FIXTURES; then
 		"$OUTPUT_DIR/TestFuncInitializer.cs" \
 		"$OUTPUT_DIR/TestCtorBoundaryCoverage.cs" \
 		"$OUTPUT_DIR/TestInterleavedStaticCollectionInit.cs" \
+		"$OUTPUT_DIR/TestStatementAnnotationLiftCoverage.cs" \
 		"$OUTPUT_DIR/TestNestedCollectionExpressionInitializers.cs" \
 		"$OUTPUT_DIR/CollectionExamplesValidation.Decompiled.csproj" \
 		"$OUTPUT_DIR/CollectionExamplesValidation.Decompiled.sln"
@@ -77,6 +78,7 @@ test -f "$OUTPUT_DIR/TestFuncInitializer.cs"
 test -f "$OUTPUT_DIR/TestNestedCollectionExpressionInitializers.cs"
 test -f "$OUTPUT_DIR/TestCtorBoundaryCoverage.cs"
 test -f "$OUTPUT_DIR/TestInterleavedStaticCollectionInit.cs"
+test -f "$OUTPUT_DIR/TestStatementAnnotationLiftCoverage.cs"
 test -f "$OUTPUT_DIR/CollectionExamplesValidation.Decompiled.csproj"
 
 echo "[5/7] Asserting expected lifted and preserved markers"
@@ -97,6 +99,8 @@ grep -q "public static readonly List<string> staticStringListField = new List<st
 grep -q "public readonly List<string> strings = new List<string>" "$OUTPUT_DIR/TestInterleavedStaticCollectionInit.cs"
 grep -q "public List<int> ListProp1 { get; set; } = new List<int>" "$OUTPUT_DIR/TestInterleavedStaticCollectionInit.cs"
 grep -q "private Func<string, bool> filter = (string s) => s.Length > 3;" "$OUTPUT_DIR/TestFuncInitializer.cs"
+grep -q "= new List<int> { 1, 2, 3 };" "$OUTPUT_DIR/TestStatementAnnotationLiftCoverage.cs"
+grep -q ": this(new List<int> { 7, 8, 9 })" "$OUTPUT_DIR/TestStatementAnnotationLiftCoverage.cs"
 grep -Fq "public static readonly HashSet<string> strings = new HashSet<string>([..stringListConst1" "$OUTPUT_DIR/TestCollectionInitWithSpread.cs"
 grep -Fq "public static readonly List<string> strings = new List<string>([..stringListConst1" "$OUTPUT_DIR/TestCollectionInitWithSpread.cs"
 grep -Fq "public static readonly IReadOnlySet<string> strings = new HashSet<string>([..stringListConst1" "$OUTPUT_DIR/TestCollectionInitWithSpread.cs"
@@ -130,7 +134,8 @@ if grep -q "_002Ector(" "$OUTPUT_DIR/TestCollectionExpressionInitializers.cs" \
 	|| grep -q "_002Ector(" "$OUTPUT_DIR/TestFuncInitializer.cs" \
 	|| grep -q "_002Ector(" "$OUTPUT_DIR/TestNestedCollectionExpressionInitializers.cs" \
 	|| grep -q "_002Ector(" "$OUTPUT_DIR/TestCtorBoundaryCoverage.cs" \
-	|| grep -q "_002Ector(" "$OUTPUT_DIR/TestInterleavedStaticCollectionInit.cs"; then
+	|| grep -q "_002Ector(" "$OUTPUT_DIR/TestInterleavedStaticCollectionInit.cs" \
+	|| grep -q "_002Ector(" "$OUTPUT_DIR/TestStatementAnnotationLiftCoverage.cs"; then
 	echo "Found unexpected _002Ector(...) artifact in decompiled output."
 	exit 1
 fi
