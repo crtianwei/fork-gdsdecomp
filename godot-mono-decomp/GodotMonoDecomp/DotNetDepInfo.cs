@@ -379,6 +379,11 @@ public class DotNetCoreDepInfo : IEquatable<DotNetCoreDepInfo>
 						&& d.HasDep(reference, type, serviceableAndNuGetOnly, dontFollowProjectReferences))));
 	}
 
+	public DotNetCoreDepInfo? GetDep(IAssemblyReference reference)
+	{
+		return GetAllDeps().FirstOrDefault(d => d.Matches(reference));
+	}
+
 	public static string GetDepPath(string assemblyPath)
 	{
 		return System.IO.Path.ChangeExtension(assemblyPath, ".deps.json");
