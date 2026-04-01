@@ -150,6 +150,7 @@ public class GodotCSharpOutputVisitor : CSharpOutputVisitor
 	private readonly CSharpDecompiler? decompiler;
 
 	private int lastStartLine = 0;
+	private readonly Dictionary<(MetadataFile Module, MethodDefinitionHandle MethodHandle, string SequenceKey), string[]> disassemblyLineCache = [];
 
 	public GodotCSharpOutputVisitor(TextWriter w, GodotMonoDecompSettings settings, bool emitILAnnotationComments = false, CSharpDecompiler? decompiler = null)
 		: this(new TextWriterTokenWriter(w), settings, emitILAnnotationComments, decompiler)
@@ -179,6 +180,10 @@ public class GodotCSharpOutputVisitor : CSharpOutputVisitor
 	public override void VisitSyntaxTree(SyntaxTree syntaxTree)
 	{
 		if (emitILAnnotationComments && decompiler != null) {
+			lastStartLine = 0;
+			startLineToSequencePoints.Clear();
+			sequencePoints.Clear();
+			disassemblyLineCache.Clear();
 			var fakeWriter = new StringWriter();
 			WriteCode(fakeWriter, settings, syntaxTree, decompiler.TypeSystem);
 			sequencePoints = decompiler.CreateSequencePoints(syntaxTree);
@@ -206,34 +211,88 @@ public class GodotCSharpOutputVisitor : CSharpOutputVisitor
 				.SelectMany(kvp => kvp.Value.Select(sp => (Method: kvp.Key, SequencePoint: sp)))
 				.OrderBy(sp => sp.SequencePoint.Offset)
 				.ToList();
-			foreach (var (Method, SequencePoint) in sps) {
-
-				MethodDefinitionHandle? methodHandle = (MethodDefinitionHandle)Method.Method?.MetadataToken;
-				if (methodHandle == null) {
+			var methodHandles = new Dictionary<ILFunction, (MetadataFile Module, MethodDefinitionHandle MethodHandle)>();
+			foreach (var sp in sps)
+			{
+				if (methodHandles.ContainsKey(sp.Method))
+				{
 					continue;
 				}
 
-				var output = new PlainTextOutput();
+				if (TryGetMethodDefinitionHandle(sp.Method, out var metadataFile, out var methodHandle))
+				{
+					methodHandles[sp.Method] = (metadataFile, methodHandle);
+				}
+			}
 
-				var methodDisassembler = new GodotLineDisassembler(output, default(CancellationToken), [SequencePoint]);
-				var metadataFile = Method.Method.ParentModule?.MetadataFile;
-				if (metadataFile != null) {
-					methodDisassembler.Disassemble(metadataFile, methodHandle.Value);
-					var text = output.ToString();
-					if (text.Length > 0) {
-						commentWriter.NewLine();
-						foreach (var line in output.ToString().Split('\n')) {
-							if (line.Length > 0) {
-								commentWriter.WriteComment(CommentType.SingleLine, line);
-							}
-						}
-					}
+			var emittedSequencePoints = new HashSet<(MetadataFile Module, MethodDefinitionHandle MethodHandle, int Offset, int EndOffset)>();
+			foreach (var sp in sps)
+			{
+				if (!methodHandles.TryGetValue(sp.Method, out var resolvedMethod))
+				{
+					continue;
 				}
 
+				var emitKey = (resolvedMethod.Module, resolvedMethod.MethodHandle, sp.SequencePoint.Offset, sp.SequencePoint.EndOffset);
+				if (!emittedSequencePoints.Add(emitKey))
+				{
+					continue;
+				}
+
+				var lines = GetDisassemblyLines(resolvedMethod.Module, resolvedMethod.MethodHandle, [sp.SequencePoint]);
+				if (lines.Length == 0)
+				{
+					continue;
+				}
+
+				commentWriter.NewLine();
+				foreach (var line in lines)
+				{
+					commentWriter.WriteComment(CommentType.SingleLine, line);
+				}
 			}
 		}
 		lastStartLine = startLine;
 		base.StartNode(node);
+	}
+
+	private string[] GetDisassemblyLines(MetadataFile metadataFile, MethodDefinitionHandle methodHandle, List<SequencePoint> sequencePointList)
+	{
+		var sequenceKey = string.Join(";", sequencePointList.Select(sp => $"{sp.Offset:x4}-{sp.EndOffset:x4}"));
+		var cacheKey = (metadataFile, methodHandle, sequenceKey);
+		if (disassemblyLineCache.TryGetValue(cacheKey, out var cachedLines))
+		{
+			return cachedLines;
+		}
+
+		var output = new PlainTextOutput();
+		var methodDisassembler = new GodotLineDisassembler(output, default(CancellationToken), sequencePointList);
+		methodDisassembler.Disassemble(metadataFile, methodHandle);
+		var lines = output
+			.ToString()
+			.Split('\n')
+			.Where(line => line.Length > 0)
+			.ToArray();
+		disassemblyLineCache[cacheKey] = lines;
+		return lines;
+	}
+
+	private static bool TryGetMethodDefinitionHandle(ILFunction function, out MetadataFile metadataFile, out MethodDefinitionHandle methodHandle)
+	{
+		metadataFile = null!;
+		methodHandle = default;
+
+		var method = function.Method;
+		var token = method?.MetadataToken ?? default;
+		var module = method?.ParentModule?.MetadataFile;
+		if (module == null || token.IsNil || token.Kind != HandleKind.MethodDefinition)
+		{
+			return false;
+		}
+
+		metadataFile = module;
+		methodHandle = (MethodDefinitionHandle)token;
+		return true;
 	}
 
 	public override void VisitArrayInitializerExpression(ArrayInitializerExpression arrayInitializerExpression)
